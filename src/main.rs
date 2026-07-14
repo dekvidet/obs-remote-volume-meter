@@ -80,7 +80,7 @@ struct LegacySaved {
 impl Default for Saved {
     fn default() -> Self {
         Self {
-            connections: vec![Connection::default()],
+            connections: Vec::new(),
             selected_connection: 0,
             theme: Theme::Dark,
             orientation: Orientation::Horizontal,
@@ -195,10 +195,11 @@ impl App {
             .iter()
             .map(|_| Runtime::new(cc.egui_ctx.clone()))
             .collect();
-        let open_settings = !saved
-            .connections
-            .iter()
-            .any(|connection| connection.auto_start_connection);
+        let open_settings = !saved.connections.is_empty()
+            && !saved
+                .connections
+                .iter()
+                .any(|connection| connection.auto_start_connection);
         let mut a = Self {
             selected_connection: saved
                 .selected_connection
@@ -260,6 +261,17 @@ impl App {
             runtime.sources.clear();
             runtime.status = Status::Disconnected;
             runtime.latest_connection_error = None;
+        }
+    }
+    fn add_connection(&mut self, ctx: &egui::Context) {
+        self.saved.connections.push(Connection::default());
+        self.runtimes.push(Runtime::new(ctx.clone()));
+        self.selected_connection = self.saved.connections.len() - 1;
+        self.saved.selected_connection = self.selected_connection;
+        if let Err(error) = self.save_settings()
+            && let Some(runtime) = self.runtimes.get_mut(self.selected_connection)
+        {
+            runtime.status = Status::Error(error);
         }
     }
     fn save_settings(&self) -> Result<(), String> {
@@ -341,10 +353,6 @@ impl App {
         if !self.settings {
             return;
         }
-        if self.saved.connections.is_empty() {
-            self.saved.connections.push(Connection::default());
-            self.selected_connection = 0;
-        }
         self.selected_connection = self
             .selected_connection
             .min(self.saved.connections.len().saturating_sub(1));
@@ -352,7 +360,6 @@ impl App {
         let mut disconnect = false;
         let mut add = false;
         let mut changed = false;
-        let mut reconnect_enabled = false;
         let mut reconnect_disabled = false;
         let mut open = self.settings;
         egui::Window::new("OBS connections")
@@ -380,6 +387,17 @@ impl App {
                     }
                 });
                 ui.separator();
+                if self.saved.connections.is_empty() {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(12.0);
+                        ui.label("No connections configured yet");
+                        ui.add_space(8.0);
+                        if ui.button("Create a new connection").clicked() {
+                            add = true;
+                        }
+                    });
+                    return;
+                }
                 let connection = &mut self.saved.connections[self.selected_connection];
                 egui::Grid::new("connection")
                     .num_columns(2)
@@ -431,8 +449,6 @@ impl App {
                     .checkbox(&mut connection.auto_reconnect, "Auto reconnect")
                     .changed();
                 changed |= reconnect_changed;
-                reconnect_enabled =
-                    reconnect_changed && !was_auto_reconnect && connection.auto_reconnect;
                 reconnect_disabled =
                     reconnect_changed && was_auto_reconnect && !connection.auto_reconnect;
                 ui.label(
@@ -469,8 +485,7 @@ impl App {
                         }
                     }
                     if ui
-                        .add_enabled(
-                            self.saved.connections.len() > 1,
+                        .add(
                             egui::Button::new("Delete connection")
                                 .fill(Color32::from_rgb(170, 45, 45)),
                         )
@@ -494,10 +509,7 @@ impl App {
             });
         self.settings = open;
         if add {
-            self.saved.connections.push(Connection::default());
-            self.runtimes.push(Runtime::new(ctx.clone()));
-            self.selected_connection = self.saved.connections.len() - 1;
-            changed = true;
+            self.add_connection(ctx);
         }
         self.saved.selected_connection = self.selected_connection;
         if reconnect_disabled {
@@ -510,14 +522,6 @@ impl App {
                 runtime.status = Status::Disconnected;
                 let _ = runtime.tx.send(obs::Command::Disconnect);
             }
-        }
-        if reconnect_enabled
-            && matches!(
-                self.runtimes[self.selected_connection].status,
-                Status::Disconnected | Status::Error(_)
-            )
-        {
-            connect = true;
         }
         if changed && let Err(error) = self.save_settings() {
             self.runtimes[self.selected_connection].status = Status::Error(error);
@@ -570,8 +574,16 @@ impl App {
                     .selected_connection
                     .min(self.saved.connections.len().saturating_sub(1));
                 self.saved.selected_connection = self.selected_connection;
+                if self.saved.connections.is_empty() {
+                    self.settings = false;
+                    self.saved.large_mode = false;
+                }
                 if let Err(error) = self.save_settings() {
-                    self.runtimes[self.selected_connection].status = Status::Error(error);
+                    if let Some(runtime) = self.runtimes.get_mut(self.selected_connection) {
+                        runtime.status = Status::Error(error);
+                    } else {
+                        eprintln!("{error}");
+                    }
                 }
                 self.confirm_delete = None;
             } else if cancel {
@@ -747,6 +759,7 @@ impl eframe::App for App {
                     });
                 });
         }
+        let mut create_connection = false;
         let displayed_sources: Vec<DisplayedSource<'_>> = self
             .runtimes
             .iter()
@@ -774,19 +787,30 @@ impl eframe::App for App {
                 .max(160.0);
                 if displayed_sources.is_empty() {
                     if !self.saved.large_mode {
-                        ui.centered_and_justified(|ui| {
-                            ui.label(
-                                if self
-                                    .runtimes
-                                    .iter()
-                                    .any(|runtime| matches!(runtime.status, Status::Connected))
-                                {
-                                    "Waiting for active OBS audio sources…"
-                                } else {
-                                    "Connect to OBS to monitor its audio levels"
-                                },
-                            );
-                        });
+                        if self.saved.connections.is_empty() {
+                            ui.vertical_centered(|ui| {
+                                ui.add_space(((ui.available_height() - 60.0) / 2.0).max(0.0));
+                                ui.label("No connections configured yet");
+                                ui.add_space(8.0);
+                                if ui.button("Create a new connection").clicked() {
+                                    create_connection = true;
+                                }
+                            });
+                        } else {
+                            ui.centered_and_justified(|ui| {
+                                ui.label(
+                                    if self
+                                        .runtimes
+                                        .iter()
+                                        .any(|runtime| matches!(runtime.status, Status::Connected))
+                                    {
+                                        "Waiting for active OBS audio sources…"
+                                    } else {
+                                        "Connect to OBS to monitor its audio levels"
+                                    },
+                                );
+                            });
+                        }
                     }
                 } else if self.saved.large_mode {
                     if self.saved.orientation == Orientation::Vertical {
@@ -937,6 +961,10 @@ impl eframe::App for App {
                     });
                 }
             });
+        if create_connection {
+            self.add_connection(&ctx);
+            self.settings = true;
+        }
         if !self.saved.large_mode {
             self.dialog(&ctx);
         }
@@ -1065,5 +1093,22 @@ fn load_settings(path: &PathBuf) -> Saved {
             eprintln!("Could not read {}: {error}", path.display());
             Saved::default()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn saved_settings_start_without_connections() {
+        assert!(Saved::default().connections.is_empty());
+    }
+
+    #[test]
+    fn new_connections_enable_automatic_options() {
+        let connection = Connection::default();
+        assert!(connection.auto_start_connection);
+        assert!(connection.auto_reconnect);
     }
 }

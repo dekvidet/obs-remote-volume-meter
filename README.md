@@ -1,54 +1,53 @@
-# OBS Remote Volume Meter — native
+# OBS Remote Volume Meter
 
-A lightweight native replacement for the React prototype. It connects directly to OBS WebSocket 5.x and renders OBS-style segmented meters without embedding a browser engine.
+A lightweight native desktop monitor for OBS audio levels. It connects directly to OBS WebSocket 5.x and displays OBS-style segmented volume meters without requiring a browser runtime.
 
-## Requirements
+## Why this exists
 
-- OBS Studio 28 or newer (OBS WebSocket is built in)
-- Rust 1.85 or newer (the project uses the Rust 2024 edition)
-- On Linux, the normal X11/Wayland and OpenGL development packages required by `eframe`
+OBS provides audio meters inside its own interface, but they are not always convenient to keep visible while working in other applications. OBS Remote Volume Meter provides a focused, detachable view for monitoring one or more OBS connections.
 
-Enable the WebSocket server in **OBS → Tools → WebSocket Server Settings**. The default port is `4455`; keep authentication enabled.
+## Features
 
-## Run
+- Live segmented meters with level markings, decay, peak hold, and clipping indication.
+- Multiple simultaneous OBS WebSocket connections and audio sources.
+- Saved connection profiles, including optional automatic startup and reconnect behavior.
+- Light and dark themes, horizontal and vertical layouts, and an enlarged Large mode (`F11`).
+- Native binaries for Linux, macOS, and Windows.
 
-```sh
-cargo run --release
-```
+## Quick start
 
-Use **Connections…** to add, edit, remove, and connect to saved OBS servers. Each connection stores its host, port, WebSocket password, and auto-connect preference in `connection.json` beside the executable. Passwords are stored in that file as plain text, so protect it accordingly. Existing single-connection files are migrated automatically.
+1. In OBS, open **Tools → WebSocket Server Settings**, enable the server, and note its port and password. The default port is `4455`.
+2. Install Rust 1.85 or newer.
+3. Run the application:
 
-Use **Settings…** to switch between light and dark themes or horizontal and vertical meters. **Large** mode (keyboard shortcut: `F11`) hides the controls and labels and displays enlarged meter bars; press `F11` again to leave it.
+   ```sh
+   cargo run --release
+   ```
 
-## Build
+4. Open **Connections** in the app, enter the OBS connection details, and connect.
+
+## Installation and releases
+
+Build an optimized binary locally with:
 
 ```sh
 cargo build --release
 ```
 
-Build on each target operating system for the simplest packaging.
+The executable is written to `target/release/`. GitHub Actions builds Linux, macOS, and Windows binaries when `src/`, `Cargo.toml`, or `Cargo.lock` changes on `master`. Push a `v*` tag, such as `v1.1.0`, to automatically create a GitHub Release with all three binaries attached. The macOS release is a DMG containing a standard app bundle and an Applications shortcut.
 
-## Implementation
+On Linux, the build may require the usual X11/Wayland and OpenGL development packages used by `eframe`.
 
-- `src/obs.rs` implements the OBS WebSocket 5.x handshake, authentication, and meter subscription.
-- `src/meter.rs` converts linear multipliers to dB and paints segmented channels, ticks, decay, peak hold, and clipping.
-- `src/main.rs` contains the application and connection UI.
+## Configuration
 
-## Commit message guide
+Connection profiles are stored in `connection.json` beside the executable. The file contains connection passwords as plain text, so protect it appropriately. The app can start connections automatically, retry unavailable or lost connections, switch themes and orientation, and enter Large mode with `F11`.
 
-* Keep commits **small, focused, and reviewable**. One logical change per commit.
-* **Split long AI runs** into multiple commits (e.g. refactor → implementation → tests → docs). Do not bundle unrelated work.
-* Use this format:
+## Documentation
 
-```text
-<concise summary>
+- [Contributing guide](CONTRIBUTING.md)
+- [OBS WebSocket documentation](https://github.com/obsproject/obs-websocket)
+- [GitHub Actions build workflow](.github/workflows/build-binaries.yml)
 
-- What changed
-- Why it changed
-- Important context (breaking change, migration, tests, risks, etc.)
-```
+## License
 
-* The summary should describe the **outcome**, not the process.
-* Bullet points should highlight only the important details—don't narrate the diff.
-* Always include the **reasoning** for non-trivial changes.
-* If the current changes span multiple concerns, **propose multiple commits instead of one large commit**.
+This project is licensed under the [GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.en.html).

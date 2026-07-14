@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - master
+    tags:
+      - "v*"
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - src/**
   workflow_dispatch:
 
 permissions:
@@ -24,7 +30,7 @@ jobs:
           - name: macOS
             os: macos-latest
             artifact: obs-remote-volume-meter-macos
-            binary: target/release/obs-remote-volume-meter-native
+            binary: target/release/obs-remote-volume-meter-macos.dmg
           - name: Windows
             os: windows-latest
             artifact: obs-remote-volume-meter-windows
@@ -49,6 +55,55 @@ jobs:
       - name: Build release binary
         run: cargo build --release --locked
 
+      - name: Package macOS application and DMG
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          version="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json, sys; print(json.load(sys.stdin)["packages"][0]["version"])')"
+          app_dir="target/release/OBS Remote Volume Meter.app"
+          staging_dir="target/release/dmg-staging"
+          executable="obs-remote-volume-meter-native"
+
+          mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources"
+          cp "target/release/$executable" "$app_dir/Contents/MacOS/$executable"
+          chmod +x "$app_dir/Contents/MacOS/$executable"
+
+          cat > "$app_dir/Contents/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleDisplayName</key>
+              <string>OBS Remote Volume Meter</string>
+              <key>CFBundleExecutable</key>
+              <string>$executable</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.totymedli.obs-remote-volume-meter</string>
+              <key>CFBundleInfoDictionaryVersion</key>
+              <string>6.0</string>
+              <key>CFBundleName</key>
+              <string>OBS Remote Volume Meter</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>$version</string>
+              <key>CFBundleVersion</key>
+              <string>$version</string>
+          </dict>
+          </plist>
+          PLIST
+
+          rm -rf "$staging_dir"
+          mkdir -p "$staging_dir"
+          cp -R "$app_dir" "$staging_dir/"
+          ln -s /Applications "$staging_dir/Applications"
+          hdiutil create \
+            -volname "OBS Remote Volume Meter" \
+            -srcfolder "$staging_dir" \
+            -ov \
+            -format UDZO \
+            "target/release/obs-remote-volume-meter-macos.dmg"
+
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
@@ -56,3 +111,47 @@ jobs:
           path: ${{ matrix.binary }}
           if-no-files-found: error
           retention-days: 14
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download Ubuntu binary
+        uses: actions/download-artifact@v4
+        with:
+          name: obs-remote-volume-meter-ubuntu
+          path: release-assets/ubuntu
+
+      - name: Download macOS binary
+        uses: actions/download-artifact@v4
+        with:
+          name: obs-remote-volume-meter-macos
+          path: release-assets/macos
+
+      - name: Download Windows binary
+        uses: actions/download-artifact@v4
+        with:
+          name: obs-remote-volume-meter-windows
+          path: release-assets/windows
+
+      - name: Rename release assets
+        run: |
+          mv release-assets/ubuntu/obs-remote-volume-meter-native release-assets/obs-remote-volume-meter-ubuntu
+          mv release-assets/windows/obs-remote-volume-meter-native.exe release-assets/obs-remote-volume-meter-windows.exe
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            release-assets/obs-remote-volume-meter-ubuntu \
+            release-assets/macos/obs-remote-volume-meter-macos.dmg \
+            release-assets/obs-remote-volume-meter-windows.exe \
+            --verify-tag \
+            --title "OBS Remote Volume Meter $GITHUB_REF_NAME" \
+            --generate-notes
