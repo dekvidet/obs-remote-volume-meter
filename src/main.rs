@@ -654,13 +654,12 @@ impl eframe::App for App {
                             .iter()
                             .filter(|runtime| matches!(runtime.status, Status::Connecting))
                             .count();
-                        let automatic = self
+                        let reconnecting = self
                             .runtimes
                             .iter()
                             .zip(&self.saved.connections)
                             .filter(|(runtime, connection)| {
-                                connection.auto_start_connection
-                                    || (connection.auto_reconnect && runtime.desired_connected)
+                                connection.auto_reconnect && runtime.desired_connected
                             })
                             .count();
                         let lost = self
@@ -668,13 +667,13 @@ impl eframe::App for App {
                             .iter()
                             .zip(&self.saved.connections)
                             .filter(|(runtime, connection)| {
-                                (connection.auto_start_connection
-                                    || (connection.auto_reconnect && runtime.desired_connected))
+                                connection.auto_reconnect
+                                    && runtime.desired_connected
                                     && !matches!(runtime.status, Status::Connected)
                                     && runtime.latest_connection_error.is_some()
                             })
                             .count();
-                        let c = if lost > 0 && lost == automatic {
+                        let c = if lost > 0 && lost == reconnecting {
                             Color32::RED
                         } else if lost > 0 {
                             Color32::YELLOW
