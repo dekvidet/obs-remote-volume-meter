@@ -17,9 +17,10 @@ use std::{
 };
 
 const SETTINGS_FILE: &str = "connection.json";
+const APP_TITLE: &str = concat!("OBS Remote Volume Meter v", env!("CARGO_PKG_VERSION"));
 fn main() -> eframe::Result {
     eframe::run_native(
-        "OBS Remote Volume Meter",
+        APP_TITLE,
         eframe::NativeOptions {
             viewport: egui::ViewportBuilder::default()
                 .with_inner_size([760.0, 480.0])
@@ -968,6 +969,7 @@ fn apply_theme(ctx: &egui::Context, theme: Theme) {
         Theme::Dark => egui::Visuals::dark(),
         Theme::Light => egui::Visuals::light(),
     });
+    #[cfg(debug_assertions)]
     ctx.all_styles_mut(|style| {
         style.debug.warn_if_rect_changes_id = false;
     });

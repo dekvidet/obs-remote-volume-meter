@@ -1,0 +1,58 @@
+name: Build native binaries
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }} binary
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Ubuntu
+            os: ubuntu-latest
+            artifact: obs-remote-volume-meter-ubuntu
+            binary: target/release/obs-remote-volume-meter-native
+          - name: macOS
+            os: macos-latest
+            artifact: obs-remote-volume-meter-macos
+            binary: target/release/obs-remote-volume-meter-native
+          - name: Windows
+            os: windows-latest
+            artifact: obs-remote-volume-meter-windows
+            binary: target/release/obs-remote-volume-meter-native.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Ubuntu GUI build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libgl1-mesa-dev libwayland-dev libxkbcommon-dev libxi-dev libxrandr-dev
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.binary }}
+          if-no-files-found: error
+          retention-days: 14
