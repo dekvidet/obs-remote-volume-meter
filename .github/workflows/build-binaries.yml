@@ -152,6 +152,7 @@ jobs:
             release-assets/obs-remote-volume-meter-ubuntu \
             release-assets/macos/obs-remote-volume-meter-macos.dmg \
             release-assets/obs-remote-volume-meter-windows.exe \
+            --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --title "OBS Remote Volume Meter $GITHUB_REF_NAME" \
             --generate-notes
