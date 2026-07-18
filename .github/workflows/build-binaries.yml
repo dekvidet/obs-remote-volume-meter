@@ -45,6 +45,9 @@ jobs:
 
       - name: Install Ubuntu GUI build dependencies
         if: runner.os == 'Linux'
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          TZ: Etc/UTC
         run: |
           apt-get update
           apt-get install --yes \
