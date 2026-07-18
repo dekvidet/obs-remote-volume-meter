@@ -9,7 +9,7 @@ use iconflow::{Pack, Size, Style, try_icon};
 use meter::Meter;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs,
     path::PathBuf,
     sync::Arc,
@@ -50,6 +50,7 @@ struct Connection {
     password: String,
     auto_start_connection: bool,
     auto_reconnect: bool,
+    hidden_channels: BTreeSet<String>,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
@@ -98,6 +99,7 @@ impl Default for Connection {
             password: String::new(),
             auto_start_connection: true,
             auto_reconnect: true,
+            hidden_channels: BTreeSet::new(),
         }
     }
 }
@@ -130,6 +132,7 @@ struct App {
     saved: Saved,
     settings_path: PathBuf,
     settings: bool,
+    channels: bool,
     selected_connection: usize,
     confirm_delete: Option<usize>,
     runtimes: Vec<Runtime>,
@@ -175,7 +178,11 @@ fn source_header(ui: &mut egui::Ui, source: &DisplayedSource<'_>, vertical: bool
         if source.named_connection {
             response.on_hover_text(&source.address);
         }
-        ui.label(&source.channel);
+        ui.scope(|ui| {
+            ui.style_mut().interaction.tooltip_delay = 0.0;
+            ui.add(egui::Label::new(&source.channel).truncate())
+                .on_hover_text(&source.channel);
+        });
     } else {
         let response =
             ui.label(RichText::new(format!("{} · {}", source.connection, source.channel)).strong());
@@ -207,6 +214,7 @@ impl App {
             saved,
             settings_path,
             settings: open_settings,
+            channels: false,
             confirm_delete: None,
             runtimes,
             last: Instant::now(),
@@ -591,6 +599,87 @@ impl App {
             }
         }
     }
+
+    fn channels_dialog(&mut self, ctx: &egui::Context) {
+        if !self.channels {
+            return;
+        }
+
+        let mut open = self.channels;
+        let mut changed = false;
+        let no_channels = self
+            .runtimes
+            .iter()
+            .all(|runtime| runtime.sources.is_empty());
+        egui::Window::new("Channels")
+            .open(&mut open)
+            .resizable(true)
+            .default_width(360.0)
+            .min_width(360.0)
+            .min_height(220.0)
+            .show(ctx, |ui| {
+                if no_channels {
+                    ui.centered_and_justified(|ui| {
+                        ui.label(
+                            RichText::new(
+                                "Create a connection first, then connect to it to receive channels.",
+                            )
+                            .color(ui.visuals().weak_text_color()),
+                        );
+                    });
+                } else {
+                    for index in 0..self.runtimes.len() {
+                        let Some(connection) = self.saved.connections.get(index) else {
+                            continue;
+                        };
+                        let title = if connection.has_name() {
+                            format!("{} ({})", connection.display_name(), connection.address())
+                        } else {
+                            connection.address()
+                        };
+                        let sources: Vec<String> =
+                            self.runtimes[index].sources.keys().cloned().collect();
+                        egui::CollapsingHeader::new(title)
+                            .default_open(true)
+                            .show(ui, |ui| {
+                                if sources.is_empty() {
+                                    ui.label(
+                                        RichText::new("No channels received yet")
+                                            .color(ui.visuals().weak_text_color()),
+                                    );
+                                }
+                                for source in sources {
+                                    let hidden = self.saved.connections[index]
+                                        .hidden_channels
+                                        .contains(&source);
+                                    ui.horizontal(|ui| {
+                                        let color = if hidden {
+                                            ui.visuals().weak_text_color()
+                                        } else {
+                                            ui.visuals().text_color()
+                                        };
+                                        ui.label(RichText::new(&source).color(color));
+                                        if ui.button(if hidden { "Show" } else { "Hide" }).clicked() {
+                                            let hidden_channels =
+                                                &mut self.saved.connections[index].hidden_channels;
+                                            if hidden {
+                                                hidden_channels.remove(&source);
+                                            } else {
+                                                hidden_channels.insert(source);
+                                            }
+                                            changed = true;
+                                        }
+                                    });
+                                }
+                            });
+                    }
+                }
+            });
+        self.channels = open;
+        if changed && let Err(error) = self.save_settings() {
+            eprintln!("{error}");
+        }
+    }
 }
 impl eframe::App for App {
     fn clear_color(&self, _: &egui::Visuals) -> [f32; 4] {
@@ -715,6 +804,13 @@ impl eframe::App for App {
                             if ui.button("Connections").clicked() {
                                 self.settings = true;
                             }
+                            if ui
+                                .button(lucide("sliders-vertical"))
+                                .on_hover_text("Channels")
+                                .clicked()
+                            {
+                                self.channels = true;
+                            }
                             let (orientation_icon, orientation_tip) = match self.saved.orientation {
                                 Orientation::Horizontal => {
                                     ("columns-3", "Switch to vertical meters")
@@ -769,6 +865,7 @@ impl eframe::App for App {
                 runtime
                     .sources
                     .iter()
+                    .filter(move |(name, _)| !connection.hidden_channels.contains(*name))
                     .map(move |(name, channels)| DisplayedSource {
                         connection: connection.display_name().to_owned(),
                         address: connection.address(),
@@ -967,6 +1064,7 @@ impl eframe::App for App {
         }
         if !self.saved.large_mode {
             self.dialog(&ctx);
+            self.channels_dialog(&ctx);
         }
         ui.response().context_menu(|ui| {
             if ui
@@ -1080,6 +1178,7 @@ fn load_settings(path: &PathBuf) -> Saved {
                         password: legacy.password,
                         auto_start_connection: legacy.auto_connect,
                         auto_reconnect: legacy.auto_connect,
+                        hidden_channels: BTreeSet::new(),
                     }],
                     selected_connection: 0,
                     theme: legacy.theme,
