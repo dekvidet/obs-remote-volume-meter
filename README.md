@@ -34,7 +34,7 @@ Build an optimized binary locally with:
 cargo build --release
 ```
 
-The executable is written to `target/release/`. GitHub Actions builds Linux, macOS, and Windows binaries when `src/`, `Cargo.toml`, or `Cargo.lock` changes on `master`. Push a `v*` tag, such as `v1.1.0`, to automatically create a GitHub Release with all three binaries attached. The macOS release is a DMG containing a standard app bundle and an Applications shortcut.
+The executable is written to `target/release/`. GitHub Actions builds Linux, macOS, and Windows binaries when `src/`, `Cargo.toml`, or `Cargo.lock` changes on `master`. Push a `v*` tag, such as `v1.1.1`, to automatically create a GitHub Release with all three binaries attached. The macOS release is a DMG containing a standard app bundle and an Applications shortcut.
 
 On Linux, the build may require the usual X11/Wayland and OpenGL development packages used by `eframe`.
 

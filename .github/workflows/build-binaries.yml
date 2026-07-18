@@ -19,20 +19,24 @@ jobs:
   build:
     name: Build ${{ matrix.name }} binary
     runs-on: ${{ matrix.os }}
+    # Build Linux against an older glibc than the hosted runner provides.
+    # The expression is null for macOS and Windows, so those jobs run normally.
+    container: ${{ matrix.container || null }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: Ubuntu
-            os: ubuntu-latest
+            os: ubuntu-22.04
+            container: ubuntu:20.04
             artifact: obs-remote-volume-meter-ubuntu
             binary: target/release/obs-remote-volume-meter-native
           - name: macOS
-            os: macos-latest
+            os: macos-15
             artifact: obs-remote-volume-meter-macos
             binary: target/release/obs-remote-volume-meter-macos.dmg
           - name: Windows
-            os: windows-latest
+            os: windows-2022
             artifact: obs-remote-volume-meter-windows
             binary: target/release/obs-remote-volume-meter-native.exe
 
@@ -44,8 +48,18 @@ jobs:
       - name: Install Ubuntu GUI build dependencies
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes libgl1-mesa-dev libwayland-dev libxkbcommon-dev libxi-dev libxrandr-dev
+          apt-get update
+          apt-get install --yes \
+            build-essential \
+            ca-certificates \
+            curl \
+            git \
+            libgl1-mesa-dev \
+            libwayland-dev \
+            libx11-dev \
+            libxkbcommon-dev \
+            libxi-dev \
+            libxrandr-dev
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -53,6 +67,10 @@ jobs:
           workspaces: . -> target
 
       - name: Build release binary
+        env:
+          # Apple Silicon Macs start at macOS 11; keep the binary compatible
+          # with that first supported release instead of the runner's OS.
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
         run: cargo build --release --locked
 
       - name: Package macOS application and DMG
