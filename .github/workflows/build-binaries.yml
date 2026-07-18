@@ -43,8 +43,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
-
       - name: Install Ubuntu GUI build dependencies
         if: runner.os == 'Linux'
         run: |
@@ -60,6 +58,10 @@ jobs:
             libxkbcommon-dev \
             libxi-dev \
             libxrandr-dev
+
+      # ubuntu:20.04 is deliberately minimal and does not include curl, which
+      # dtolnay/rust-toolchain uses to bootstrap rustup.
+      - uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
